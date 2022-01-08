@@ -8,6 +8,7 @@ Bot không sử dụng bất kỳ thông tin cá nhân của người dùng cho 
 Xin cảm ơn.
 ## Hướng dẫn sử dụng
 Vì chính sách an toàn của google, người dùng phải tạo một tài khoản google mới chỉ dành cho bot và bot sẽ sử dụng tài khoản này để tạo các Events trên Google Calendar
+Phải sử dụng `Registry.py` để đăng ký tài khoản Google mới, không dùng các trình duyệt mặc định trên máy
 #### Trước khi sử dụng lần đầu:
 - Chạy `Registry.py` và tạo tài khoản Google mới, lưu ý là có thể sử dụng số điện thoại cùng với tài khoản chính.
 - Vào tài khoản, tìm kiếm ngôn ngử và đổi thành tiếng Anh (English)
