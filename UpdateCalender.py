@@ -1,30 +1,33 @@
 import os
-from unittest import result
 from selenium import webdriver
+from selenium.webdriver.common import keys
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains as act
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
-import collections
 
-'''
-TO-DO
-[x] Change Calendar
-[x] Change data get from web
-[x] Check if yet saved
-[x] Sort Calendar event
-[x] Take next Month
-[ ] Check if entered correctly
-[ ] Customize notif
-[ ] Create new Account
-[ ] Create new calendar
-'''
+FORMAT = 'utf-8'
+EDGE_PATH = "msedgedriver.exe"
+driver = webdriver.Edge(EDGE_PATH)
+# CHROME_PATH = "chromedriver.exe"
+# driver = webdriver.Chrome(CHROME_PATH)
 
-PATH = "chromedriver.exe"
-driver = webdriver.Chrome(PATH)
+MoodleAcc = ""
+MoodlePas = ""
+GGAcc = ""
+GGPas = ""
+SelectedCalendar = ''
+numOfMonthTake = 2
+allNotif = [
+    '1 h'
+]
 
+MoodleCalendar = "https://courses.ctda.hcmus.edu.vn/calendar/view.php?view=month"
+CalLink = "https://calendar.google.com/calendar/u/0/r/day/"
+
+calenEvent = {}
 MonthToInt = {
     'January': 1,
     'February': 2,
@@ -40,21 +43,48 @@ MonthToInt = {
     'December': 12
 }
 
-MoodleAcc = ""
-MoodlePas = ""
-GGAcc = ""
-GGPas = ""
-SelectedCalendar = ''
-numOfMonthTake = 3
+def super_send_keys(parent, byEle, eleSource, inputData):
+    try:
+        enterField = WebDriverWait(parent, 30).until(
+            EC.element_to_be_clickable((byEle, eleSource))
+        )
+    except:
+        return
 
-MoodleCalendar = "https://courses.ctda.hcmus.edu.vn/calendar/view.php?view="
-CalLink = "https://calendar.google.com/calendar/u/0/r/day/"
+    finished = False
+    while not finished:
+        enterField.click()
+        enterField.send_keys(Keys.BACKSPACE)
+        enterField.send_keys(inputData)
+        enterField.send_keys(Keys.ENTER)
+        temp = enterField.get_attribute('data-initial-value')
+        if temp == inputData:
+            finished = True
 
-isFinished = False
-timeLooped = 0
-calenEvent = {
-    '09 January 2022': [('test1', '09:00')]
-}
+def normalizeTime(inputTime):
+    temp = int(inputTime[:2])
+    result = ''
+    isPM = True
+    if temp == 0:
+        result += str(12)
+    elif temp < 10:
+        result += inputTime[1]
+    elif temp > 12:
+        result += str(temp - 12)
+        isPM = True
+    else:
+        result += str(12)
+        isPM = True
+
+    result += ':' + inputTime[3:]
+    result = result.replace(result[result.find('\n'):], '')
+    
+    if isPM:
+        result += 'pm'
+    else:
+        result += 'am'
+
+    return result
 
 def findNewEvent(oldEvent: dict) -> dict:
     if not oldEvent:
@@ -70,6 +100,7 @@ def findNewEvent(oldEvent: dict) -> dict:
             i += 1
             continue
         elif oldKey[i] > newKey[j]:
+            result[newKey[j]] = calenEvent[newKey[j]]
             j += 1
             continue
         else:
@@ -79,15 +110,19 @@ def findNewEvent(oldEvent: dict) -> dict:
             i += 1
             j += 1
 
+    while j < len(newKey):
+        result[newKey[j]] = calenEvent[newKey[j]]
+        j += 1
+
     return result
 
 def loadOldEvent() -> dict:
-    if os.stat('OldEvents.txt').st_size == 0:
+    if os.stat('OldEvents.data').st_size == 0:
         return {}
 
     result = {}
-    oldEventFile = open('OldEvents.txt', 'rt')
-    data = oldEventFile.read().split('\n')
+    oldEventFile = open('OldEvents.data', 'rb')
+    data = oldEventFile.read().decode(FORMAT).split('\n')
     
     for value in data:
         item = value.split(': ')
@@ -100,15 +135,15 @@ def loadOldEvent() -> dict:
     return dict(sorted(result.items()))
 
 def saveAllEvents():
-    saveFile = open('OldEvents.txt', 'wt')
+    saveFile = open('OldEvents.data', 'wb')
     for k, vs in calenEvent.items():
-        saveFile.write(f'{k}: ')
+        saveFile.write(f'{k}: '.encode(FORMAT))
         for v in vs:
             if v != vs[0]:
-                saveFile.write('; ')
-            saveFile.write(f'{v[0]}, {v[1]}')
+                saveFile.write('; '.encode(FORMAT))
+            saveFile.write(f'{v[0]}, {v[1]}'.encode(FORMAT))
         if calenEvent[k] != calenEvent[list(calenEvent.keys())[-1]]:
-            saveFile.write('\n')
+            saveFile.write('\n'.encode(FORMAT))
     saveFile.close()
 
 def compileEvent() -> dict:
@@ -117,7 +152,7 @@ def compileEvent() -> dict:
     return result
 
 def loginMoodle():
-    accField = WebDriverWait(driver, 10).until(
+    accField = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "username"))
     )
     accField.send_keys(MoodleAcc)
@@ -130,27 +165,30 @@ def loginCalendar():
     super_get(CalLink)
     
     time.sleep(3)          # In case of bot detection
-    accField = WebDriverWait(driver, 10).until(
+    accField = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "identifierId"))
     )
     accField.send_keys(GGAcc)
     accField.send_keys(Keys.ENTER)
     time.sleep(2)
-    pwField = WebDriverWait(driver, 10).until(
+    pwField = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.NAME, "password"))
     )
     time.sleep(2)
     pwField.send_keys(GGPas)
     pwField.send_keys(Keys.ENTER)
 
+    time.sleep(3)
+
 def eventProcessing(event):
     # Get event ID
+    time.sleep(.5)
     temp = event.find_element(By.XPATH, ".//a")
     id = temp.get_attribute("data-event-id")
     event.click()
 
     # Wait for info window and info
-    tempWindow = WebDriverWait(driver, 10).until(
+    tempWindow = WebDriverWait(driver, 20).until(
         EC.presence_of_element_located((By.XPATH, f"//div[@class='summary-modal-container'][@data-event-id='{id}']"))
     )
     time.sleep(1)
@@ -160,19 +198,15 @@ def eventProcessing(event):
     time_info = date_time.split(', ')
 
     # Save event
-    date = time_info[1][:2]
-    if int(date) < 10:
-        time_info[1] = '0' + time_info[1]
+    time_info[2] = normalizeTime(time_info[2])
     key = time_info[1] + ' ' + year
     calenEvent.setdefault(key, [])
-    time_info[2] = time_info[2].replace(time_info[2][time_info[2].find('\n'):], '')
     calenEvent[key].append((title, time_info[2]))
 
     # Close info window
     print(key + ': ' + str(calenEvent[key]))
     closeButton = tempWindow.find_element(By.XPATH, "//button[@type='button'][@class='close']")
     closeButton.click()
-    time.sleep(1)
 
 def createEventForm():
     calendarField = WebDriverWait(driver, 20).until(
@@ -186,94 +220,83 @@ def createEventForm():
     moreOption = eventInfoWidow.find_element(By.XPATH, ".//span[@class='NPEfkd RveJvd snByac']")
     moreOption.click()
 
-def setDate(date: str):
+def setDate(inputDate: str):
     temp = driver.find_element(By.XPATH, "//div[@aria-label='Event Details']")
 
-    dateField = WebDriverWait(driver, 30).until(
-        EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='Start date']"))
-    )
-    dateField.click()
-    time.sleep(.5)
-    dateField.send_keys(Keys.BACKSPACE)
-    dateField.send_keys(f"{MonthToInt[date[3:-5]]}/{date[:2]}/{date[-4:]}\n")
-    time.sleep(.5)
-    dateField.send_keys(Keys.ENTER)
+    formattedDate = ''
+    if inputDate[1] == ' ':
+        formattedDate = (f"{MonthToInt[inputDate[2:-5]]}/{inputDate[:1]}/{inputDate[-4:]}")
+    else:
+        formattedDate += (f"{MonthToInt[inputDate[3:-5]]}/{inputDate[:2]}/{inputDate[-4:]}")
 
+    super_send_keys(driver, By.XPATH, "//input[@aria-label='Start date']", formattedDate)
     temp.click()
-    dateField = WebDriverWait(driver, 30).until(
-        EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='End date']"))
-    )
-    dateField.click()
-    time.sleep(.5)
-    dateField.send_keys(Keys.BACKSPACE)
-    dateField.send_keys(f"{MonthToInt[date[3:-5]]}/{date[:2]}/{date[-4:]}\n")
-    time.sleep(.5)
-    dateField.send_keys(Keys.ENTER)
+
+    super_send_keys(driver, By.XPATH, "//input[@aria-label='End date']", formattedDate)
     temp.click()
 
 def setTime(timeInput: str):
-    settedTime = timeInput[1][:5]
-    if int(settedTime[:2]) < 11:
-        settedTime += 'am'
+    settedTime = timeInput[1]
 
-    startTimeField = WebDriverWait(driver, 30).until(
-        EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='Start time']"))
-    )
-    startTimeField.click()
-    time.sleep(1)
-    startTimeField.send_keys(Keys.BACKSPACE)
-    startTimeField.send_keys(settedTime)
-    startTimeField.send_keys(Keys.ENTER)
+    temp = driver.find_element(By.XPATH, "//div[@aria-label='Event Details']")
 
-    endTimeField = WebDriverWait(driver, 30).until(
-        EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='End time']"))
-    )
-    endTimeField.click()
-    time.sleep(1)
-    endTimeField.send_keys(Keys.BACKSPACE)
-    endTimeField.send_keys(settedTime)
-    endTimeField.send_keys(Keys.ENTER)
+    super_send_keys(driver, By.XPATH, "//input[@aria-label='Start time']", settedTime)
+    temp.click()
+
+    super_send_keys(driver, By.XPATH, "//input[@aria-label='End time']", settedTime)
+    temp.click()
 
 def ChangeCalender():
-    time.sleep(1)
     calendarOption = WebDriverWait(driver, 30).until(
         EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Calendar'][@id='xCalSel']"))
     )
     calendarOption.click()
-    time.sleep(1)
+    time.sleep(.5)
     availableOption = calendarOption.find_elements(By.XPATH, ".//child::div[@class='OA0qNb ncFHed']//div[@role='option']")
     for option in availableOption:
         if option.text == SelectedCalendar:
-            time.sleep(1)
+            time.sleep(.5)
             option.click()
             break
 
 def makeNotif():
     temp = driver.find_element(By.XPATH, "//div[@aria-label='Event Details']")
     addNotif = driver.find_element(By.XPATH, "//div[@aria-label='Add notification']")
-    addNotif.click()
+    for i in enumerate(allNotif):
+        time.sleep(.5)
+        addNotif.click()
+
+    i = 0
+    notif_info = []
+    for notifTime in allNotif:
+        notif_info.append(notifTime.split(' '))
+        i += 1
 
     # Amount
-    timeNotif = WebDriverWait(driver, 20).until(
+    i = 0
+    notifsFields = WebDriverWait(driver, 20).until(
         EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='Minutes in advance for notification']"))
     )
-    timeNotif.click()
-    timeNotif.clear()
-    timeNotif.send_keys(1)      # Time
-    timeNotif.send_keys(Keys.ENTER)
-    temp.click()
+    notifsFields = driver.find_elements(By.XPATH, "//input[@aria-label='Minutes in advance for notification']")
+    for notifsField in notifsFields:
+        notifsField.click()
+        notifsField.clear()
+        notifsField.send_keys(notif_info[i][0])      # Time
+        notifsField.send_keys(Keys.ENTER)
+        temp.click()
+        i += 1
 
     # Unit
-    timeOptionButton = driver.find_element(By.XPATH, "//div[@aria-label='Unit of time selection']")
-    timeOptionButton.click()
-    timeOption = timeOptionButton.find_elements(By.XPATH, ".//child::div[@class='OA0qNb ncFHed']//div[@role='option']")
-
-    for option in timeOption:
-        if option.text == 'days':     # Unit
-            time.sleep(1)
-            option.click()
-            break
-    temp.click()
+    i = 0
+    timeOptionButtons = driver.find_elements(By.XPATH, "//div[@aria-label='Unit of time selection']")
+    for timeOptionButton in timeOptionButtons:
+        timeOptionButton.click()
+        timeOption = timeOptionButton.find_element(By.XPATH, ".//div//div[@role='option']")
+        timeOption.send_keys(notif_info[i][1])
+        time.sleep(.5)
+        chosenOptions = timeOption.find_element(By.XPATH, "..//div[@class='MocG8c LMgvRb KKjvXb']")
+        chosenOptions.send_keys(Keys.ENTER)
+        i += 1
 
 def enterTitle(title: str):
     titleField =  WebDriverWait(driver, 30).until(
@@ -289,71 +312,58 @@ def super_get(url: str):
 
 def main():
     global timeLooped, isFinished, driver, calenEvent
-    while (not isFinished) and (timeLooped < 5):
-        super_get(MoodleCalendar + "month")
+    if not MoodleAcc or not MoodlePas or not GGAcc or not GGPas:
+        print('Please follow the instruction and edit the code accordingly')
+        return
+
+    super_get(MoodleCalendar)
+
+    #Open moodle
+    loginMoodle()
     
-        #Open moodle
-        loginMoodle()
+    cldrEvents = []
+    for i in range(numOfMonthTake - 1):
+        container = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "calendarwrapper"))
+        )
+        cldrEvents = container.find_elements(By.XPATH, "//li[@data-region='event-item']")        ### Get events from Moodle
+        # Get Event Info
+        time.sleep(1)
+        for event in cldrEvents:
+            eventProcessing(event)
+        nextMonthButton = driver.find_element(By.XPATH, "//a[@title='Next month']")
+        nextMonthButton.click()
+        cldrEvents.clear()
+        time.sleep(1)    
         
-        # try:
-        cldrEvents = []
-        for i in range(numOfMonthTake - 1):
-            container = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "calendarwrapper"))
-            )
-            cldrEvents = container.find_elements(By.XPATH, "//li[@data-region='event-item']")
-
-            ### Get events from Moodle
-            # Get Event Info
-            for event in cldrEvents:
-                eventProcessing(event)
-            nextMonthButton = driver.find_element(By.XPATH, "//a[@title='Next month']")
-            nextMonthButton.click()
-            cldrEvents.clear()
-            time.sleep(1)
-        ### Get new event and skip old events
-        calenEvent = dict(sorted(calenEvent.items()))
-        newEvents = compileEvent()
-        if not newEvents:
-            print('There are no new events on the new list')
-            isFinished = True
-            break
-        
-        ### Save to Google
-        # Enter GG Acount
-        loginCalendar()
-
-        # Save to Calendar
-        for key, items in newEvents.items():
-            for item in items:
-                time.sleep(1)
-                todayButton = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, "//div[@class='U26fgb O0WRkf oG5Srb C0oVfc GXlaye qRI4pc M9Bg4d']"))
-                )
-                todayButton.click()
-
-                # Enter create form
-                createEventForm()
-                time.sleep(2)
-
-                if SelectedCalendar:
-                    ChangeCalender()
-
-                # Enter event
-                setTime(item)
-                setDate(key)
-                makeNotif()
-                enterTitle(item[0])
+    ### Get new event and skip old events
+    calenEvent = dict(sorted(calenEvent.items()))
+    newEvents = compileEvent()
+    if not newEvents:
+        print('There are no new events on the new list')
         isFinished = True
+        return
+    
+    ### Save to Google
+    # Enter GG Acount
+    loginCalendar()    # Save to Calendar
+    for key, items in newEvents.items():
+        for item in items:
+            time.sleep(1)
+            todayButton = WebDriverWait(driver, 20).until(
+                EC.element_to_be_clickable((By.XPATH, "//div[@class='U26fgb O0WRkf oG5Srb C0oVfc GXlaye qRI4pc M9Bg4d']"))
+            )
+            todayButton.click()            # Enter create form
+            createEventForm()
+            time.sleep(.5)            
+            if SelectedCalendar:
+                ChangeCalender()            # Enter event
+            setTime(item)
+            setDate(key)
+            makeNotif()
+            enterTitle(item[0])
 
-        # except:
-        #     print("Something went wrong, retrying")
-        #     timeLooped += 1
-
-    if timeLooped == 5:
-        print("Time retry exceeded the limit")
-    else:
-        print("Run successfully")
+    isFinished = True
     
     saveAllEvents()
 
